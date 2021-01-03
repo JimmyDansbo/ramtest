@@ -2,27 +2,114 @@
 !src "../cx16stuff/cx16.inc"
 !src "../cx16stuff/vera0.9.inc"
 +SYS_LINE
-
-MEMTOP		= $FF99
+	jmp	main
 
 BANKRAM_START	= $A000
 BANKRAM_END	= $BFFF
 
-!macro PRINT_CHR {
-	sta	VERA_DATA0
+!macro PRINT {
+	jsr	CHROUT
 }
 
-main:!byte $db
+!macro PRINT_CHR .chr {
+	lda	#.chr
+	+PRINT
+}
+
+Init_str:	!pet	"  welcome to banked ram tester",13
+ 		!pet	"     for commander x16",13,13
+		!pet	"by jimmy dansbo (jimmy@dansbo.dk)",13
+		!pet	" https://github.com/jimmydansbo/",0
+Num_banks_str:	!pet	"number of ram banks: $",0
+Cur_bank_str	!pet	"currently testing bank# $  ",0
+Err_str1:	!pet	$1C,"!!! error found at bank# $",0
+Err_str2:	!pet	" address $",0
+No_err_str:	!pet	13,13,"all tests completed, no errors found",0
+
+Num_banks	= TMP7
+
+main:
+	+PRINT_CHR 13
+	lda	#<Init_str
+	ldy	#>Init_str
+	jsr	Print_str
+	+PRINT_CHR 13
+	jsr	CHROUT
+	lda	#<Num_banks_str
+	ldy	#>Num_banks_str
+	jsr	Print_str
+
 	sec
 	jsr	MEMTOP
+	sta	Num_banks
+	bne	+
+	tax
+	+PRINT_CHR "1"
+	txa
++	jsr	Print_hex
+	+PRINT_CHR 13
+	jsr	CHROUT
+	lda	#<Cur_bank_str
+	ldy	#>Cur_bank_str
+	jsr	Print_str
 
-	lda	#1
-	sta	VIA1PA
+	stz	VIA1PA
+@bank_loop:
+	+PRINT_CHR $9D
+	jsr	CHROUT
+
+	inc	VIA1PA
+	lda	VIA1PA
+	cmp	Num_banks
+	beq	@end
+	jsr	Print_hex
 
 	lda	#>BANKRAM_START
 	ldx	#>BANKRAM_END
 	jsr	Fast_RAM_test
+
+	cpx	#$C0
+	bne	@err
+	bra	@bank_loop
+@err:
+	+PRINT_CHR 13
+	jsr	CHROUT
+	sty	TMP2
+	stx	TMP3
+	lda	#<Err_str1
+	ldy	#>Err_str1
+	jsr	Print_str
+	lda	VIA1PA
+	jsr	Print_hex
+	lda	#<Err_str2
+	ldy	#>Err_str2
+	jsr	Print_str
+	lda	TMP3
+	jsr	Print_hex
+	lda	TMP2
+	jsr	Print_hex
+	+PRINT_CHR $05
+	+PRINT_CHR 13
 	rts
+@end:
+	lda	#<No_err_str
+	ldy	#>No_err_str
+	jsr	Print_str
+	+PRINT_CHR 13
+	rts
+
+Print_str:
+@ptr	= TMP0
+	sta	@ptr
+	sty	@ptr+1
+	ldy	#0
+@loop:
+	lda	(@ptr),y
+	beq	@end
+	+PRINT
+	iny
+	bra	@loop
+@end:	rts
 
 Print_hex:
 	tay
@@ -32,12 +119,12 @@ Print_hex:
 	lsr
 	tax
 	lda	Hex_tbl,x
-	+PRINT_CHR
+	+PRINT
 	tya
 	and	#$0F
 	tax
 	lda	Hex_tbl,x
-	+PRINT_CHR
+	+PRINT
 	rts
 
 ;****************************************************************************
@@ -47,7 +134,7 @@ Print_hex:
 ;* INPUTS:	.A = Page to start on (usually $A0 for banked RAM)
 ;*		.X = Last page to test (usually $BF for banked RAM)
 ;****************************************************************************
-;* OUTPUTS:	.A(high-byte) & .Y(low-byte) =
+;* OUTPUTS:	.X(high-byte) & .Y(low-byte) =
 ;*		address of fault or highest location tested + 1 for no fault
 ;****************************************************************************
 ;* USES:	.A, .X & .Y registers
@@ -123,7 +210,7 @@ Fast_RAM_test:
 	lda	@flag		; invert flag..
 	eor	#$FF		; .. for part 2
 	bmi	@big_loop
-@out:	lda	@ptr_h		; low order adds to display
+@out:	ldx	@ptr_h		; low order adds to display
 	rts			; ..and exit to KIM
 
-Hex_tbl:	!pet	"0123456789ABCDEF"
+Hex_tbl:	!pet	"0123456789abcdef"
