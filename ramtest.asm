@@ -5,7 +5,6 @@
 	jmp	main		; Jump over variables to the main program
 
 RAM_BANK	= VIA1PA	; In comming KERNAL/Emu it will be zero-page $00
-BANKRAM_START	= $A000
 BANKRAM_END	= $BFFF
 
 Init_str:	!pet	"  welcome to banked ram tester",13
@@ -65,7 +64,6 @@ main:
 	ldy	#>Cur_bank_str
 	jsr	Print_str
 
-
 	stz	RAM_BANK
 @bank_loop:
 	+PRINT_CHR $9D		; left-arrow twice to overwrite bank number
@@ -78,7 +76,7 @@ main:
 
 	jsr	Print_hex	; Print the current bank number
 
-	lda	#>BANKRAM_START	; Test the memory in current bank.
+	lda	#>RAM_BANK_START; Test the memory in bank $A0 to $BF
 	ldx	#>BANKRAM_END	; .A = Start page, .X = End page
 	jsr	Fast_RAM_test
 
