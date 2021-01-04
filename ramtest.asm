@@ -2,19 +2,11 @@
 !src "../cx16stuff/cx16.inc"
 !src "../cx16stuff/vera0.9.inc"
 +SYS_LINE
-	jmp	main
+	jmp	main		; Jump over variables to the main program
 
+RAM_BANK	= VIA1PA	; In comming KERNAL/Emu it will be zero-page $00
 BANKRAM_START	= $A000
 BANKRAM_END	= $BFFF
-
-!macro PRINT {
-	jsr	CHROUT
-}
-
-!macro PRINT_CHR .chr {
-	lda	#.chr
-	+PRINT
-}
 
 Init_str:	!pet	"  welcome to banked ram tester",13
  		!pet	"     for commander x16",13,13
@@ -22,127 +14,166 @@ Init_str:	!pet	"  welcome to banked ram tester",13
 		!pet	" https://github.com/jimmydansbo/",0
 Num_banks_str:	!pet	"number of ram banks: $",0
 Cur_bank_str	!pet	"currently testing bank# $  ",0
-Err_str1:	!pet	$1C,"!!! error found at bank# $",0
+Err_str1:	!pet	PET_RED,"!!! error found at bank# $",0
 Err_str2:	!pet	" address $",0
 No_err_str:	!pet	13,13,"all tests completed, no errors found",0
+Hex_tbl:	!pet	"0123456789abcdef"
 
 Num_banks	= TMP7
 
+; This macro just outputs the character stored in A register.
+; It exists to make it easy to alter the code to write directly to VERA
+; instead of using a KERNAL call.
+!macro PRINT {
+	jsr	CHROUT
+}
+
+; Print a single immediate character to screen.
+!macro PRINT_CHR .chr {
+	lda	#.chr
+	+PRINT
+}
+
+; ****************************************************************************
+; Main program start
+; ****************************************************************************
 main:
+	; Print the welcome message
 	+PRINT_CHR 13
 	lda	#<Init_str
 	ldy	#>Init_str
 	jsr	Print_str
+	; Print the number of banks detected
 	+PRINT_CHR 13
 	jsr	CHROUT
 	lda	#<Num_banks_str
 	ldy	#>Num_banks_str
 	jsr	Print_str
-
 	sec
-	jsr	MEMTOP
+	jsr	MEMTOP		; Detect number of banks (by setting Carry bit)
 	sta	Num_banks
-	bne	+
-	tax
-	+PRINT_CHR "1"
+	bne	+		; If number of banks = 0, then memory is fully
+	tax			; populated and number of banks is 256 = $100
+	+PRINT_CHR "1"		; .. so write 1 before the rest of the number
 	txa
 +	jsr	Print_hex
+
+	; Print information about bank being tested
 	+PRINT_CHR 13
 	jsr	CHROUT
 	lda	#<Cur_bank_str
 	ldy	#>Cur_bank_str
 	jsr	Print_str
 
-	stz	VIA1PA
+
+	stz	RAM_BANK
 @bank_loop:
-	+PRINT_CHR $9D
+	+PRINT_CHR $9D		; left-arrow twice to overwrite bank number
 	jsr	CHROUT
 
-	inc	VIA1PA
-	lda	VIA1PA
+	inc	RAM_BANK	; Go to next RAM bank
+	lda	RAM_BANK	; If it is = number of banks, we are done
 	cmp	Num_banks
-	beq	@end
-	jsr	Print_hex
+	beq	@end		; So jump to end.
 
-	lda	#>BANKRAM_START
-	ldx	#>BANKRAM_END
+	jsr	Print_hex	; Print the current bank number
+
+	lda	#>BANKRAM_START	; Test the memory in current bank.
+	ldx	#>BANKRAM_END	; .A = Start page, .X = End page
 	jsr	Fast_RAM_test
 
-	cpx	#$C0
-	bne	@err
-	bra	@bank_loop
+	cpx	#$C0		; If Fast_RAM_Test did not get to page $C0
+	bne	@err		; it has encountered an error.
+	bra	@bank_loop	; Otherwise loop back and test next bank.
 @err:
-	+PRINT_CHR 13
+	+PRINT_CHR 13		; 2x New line
 	jsr	CHROUT
-	sty	TMP2
+	sty	TMP2		; Save faulty address for later use.
 	stx	TMP3
+	; Print Error string
 	lda	#<Err_str1
 	ldy	#>Err_str1
 	jsr	Print_str
-	lda	VIA1PA
+	; Print the failing RAM bank number
+	lda	RAM_BANK
 	jsr	Print_hex
+	; Print the rest of the Error string
 	lda	#<Err_str2
 	ldy	#>Err_str2
 	jsr	Print_str
+	; Load and print faulty address
 	lda	TMP3
 	jsr	Print_hex
 	lda	TMP2
 	jsr	Print_hex
-	+PRINT_CHR $05
+	+PRINT_CHR PET_WHITE	; Error string is with red chars, return to white
 	+PRINT_CHR 13
-	rts
+	rts			; End the program
 @end:
+	; Print All OK string
 	lda	#<No_err_str
 	ldy	#>No_err_str
 	jsr	Print_str
 	+PRINT_CHR 13
 	rts
 
+; ****************************************************************************
+; Print a 0-terminated string
+; ****************************************************************************
+; INPUTS:	.A & .Y = pointer to start of string. .A=low-byte, .Y=high-byte
+; USES:		.A, .Y & TMP0-TMP1
+; ****************************************************************************
 Print_str:
 @ptr	= TMP0
-	sta	@ptr
+	sta	@ptr		; Store the pointer to string in zero-page
 	sty	@ptr+1
-	ldy	#0
+	ldy	#0		; Initialize .Y as index
 @loop:
-	lda	(@ptr),y
-	beq	@end
-	+PRINT
-	iny
-	bra	@loop
+	lda	(@ptr),y	; Load character from string
+	beq	@end		; If it is 0, we are done
+	+PRINT			; Output the caracter
+	iny			; Increment .Y to get next character
+	bra	@loop		; Loop back to get next character
 @end:	rts
 
+; ****************************************************************************
+; Print the hexadecimal value of a byte to screen
+; ****************************************************************************
+; INPUTS:	.A = the byte to print
+; USES:		.A, .X & .Y
+; ****************************************************************************
 Print_hex:
-	tay
+	tay			; Save byte in .Y for later use
+	lsr			; Move high-nibble to low-nibble
 	lsr
 	lsr
 	lsr
-	lsr
-	tax
-	lda	Hex_tbl,x
-	+PRINT
-	tya
-	and	#$0F
-	tax
-	lda	Hex_tbl,x
-	+PRINT
+	tax			; Use Low nibble as index into Hex_tbl
+	lda	Hex_tbl,x	; Load character to print
+	+PRINT			; Print the character
+	tya			; Restore original byte from .Y
+	and	#$0F		; Zero out high-nibble
+	tax			; Use low nibble as index into Hex_tbl
+	lda	Hex_tbl,x	; Load character to print
+	+PRINT			; Print the character
 	rts
 
-;****************************************************************************
-;* Function to test an area of RAM (usually banked RAM) It tests at minium
-;* an entire page - WARNING, memory will be overwritten.
-;****************************************************************************
-;* INPUTS:	.A = Page to start on (usually $A0 for banked RAM)
-;*		.X = Last page to test (usually $BF for banked RAM)
-;****************************************************************************
-;* OUTPUTS:	.X(high-byte) & .Y(low-byte) =
-;*		address of fault or highest location tested + 1 for no fault
-;****************************************************************************
-;* USES:	.A, .X & .Y registers
-;*		zero page, TMP0-TMP6 = $0022-$0028
-;****************************************************************************
-;* NOTE:	Information about function can be found here:
-;*		https://cx16.dk/fastramtest/
-;****************************************************************************
+; ****************************************************************************
+; Function to test an area of RAM (usually banked RAM) It tests at minium
+; an entire page - WARNING, memory will be overwritten.
+; ****************************************************************************
+; INPUTS:	.A = Page to start on (usually $A0 for banked RAM)
+;		.X = Last page to test (usually $BF for banked RAM)
+; ****************************************************************************
+; OUTPUTS:	.X(high-byte) & .Y(low-byte) =
+;		address of fault or highest location tested + 1 for no fault
+; ****************************************************************************
+; USES:		.A, .X & .Y registers
+;		zero page, TMP0-TMP6 = $0022-$0028
+; ****************************************************************************
+; NOTE:		Information about function can be found here:
+;		https://cx16.dk/fastramtest/
+; ****************************************************************************
 Fast_RAM_test:
 @ptr_l		= TMP0
 @ptr_h		= TMP1
@@ -212,5 +243,3 @@ Fast_RAM_test:
 	bmi	@big_loop
 @out:	ldx	@ptr_h		; low order adds to display
 	rts			; ..and exit to KIM
-
-Hex_tbl:	!pet	"0123456789abcdef"
