@@ -10,7 +10,7 @@ BANKRAM_END	= $BFFF
 Init_str:	!pet	"  welcome to banked ram tester",13
  		!pet	"     for commander x16",13,13
 		!pet	"by jimmy dansbo (jimmy@dansbo.dk)",13
-		!pet	"   https://git.io/JLAhW",0
+		!pet	"    http://jnz.dk/rtst/",0
 Num_banks_str:	!pet	"number of ram banks: $",0
 Cur_bank_str	!pet	"currently testing bank# $  ",0
 Err_str1:	!pet	PET_RED,"!!! error found at bank# $",0
