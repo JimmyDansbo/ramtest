@@ -1,6 +1,5 @@
 !cpu w65c02
 !src "../cx16stuff/cx16.inc"
-!src "../cx16stuff/vera0.9.inc"
 +SYS_LINE
 	jmp	main		; Jump over variables to the main program
 
