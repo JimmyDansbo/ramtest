@@ -4,7 +4,6 @@
 +SYS_LINE
 	jmp	main		; Jump over variables to the main program
 
-RAM_BANK	= VIA1PA	; In comming KERNAL/Emu it will be zero-page $00
 BANKRAM_END	= $BFFF
 
 Init_str:	!pet	"  welcome to banked ram tester",13
